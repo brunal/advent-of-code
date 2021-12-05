@@ -3,10 +3,10 @@
   (mapcar (lambda (line) (coerce (coerce line 'list) 'vector))
   input))
 
-(defparameter +input+
+(defparameter *input*
   (prepare-input (uiop:read-file-lines "03.input")))
 
-(defparameter +input-test+
+(defparameter *input-test*
   (prepare-input (uiop:read-file-lines "03.input.test")))
 
 
@@ -16,14 +16,13 @@
 
 (defun most-common-bit (bits)
   (loop
-    for bit in bits
     with zeroes = 0
     with ones = 0
+    for bit in bits
     do
-       (case bit
+       (ccase bit
 	 (#\0 (incf zeroes 1))
-	 (#\1 (incf ones 1))
-	 (t (error "this should not happen")))
+	 (#\1 (incf ones 1)))
     finally (return (cond
 		      ((> zeroes ones) 0)
 		      ((< zeroes ones) 1)
@@ -45,10 +44,10 @@
 (defun part1 (input)
   (make-result
   (loop
-    for i from 0 to (- (length (car input)) 1)
+    for i from 0 below (length (car input))
     collect (most-common-bit (get-nth-bit input i)))))
 
-(print (part1 +input+))
+(print (part1 *input*))
 
 
 (defun part2-helper (input index choice-function)
@@ -63,9 +62,9 @@
 
 (defun most-common-bit-or-1 (bits)
   (loop
-    for bit in bits
     with zeroes = 0
     with ones = 0
+    for bit in bits
     do
        (ccase bit
 	 (#\0 (incf zeroes 1))
@@ -83,4 +82,4 @@
   (* (char-vec-to-integer (part2-helper input 0 #'most-common-bit-or-1))
     (char-vec-to-integer (part2-helper input 0 #'least-common-bit-or-0))))
 
-(print (part2 +input+))
+(print (part2 *input*))
