@@ -8,12 +8,12 @@
 
 
 (defun total-fuel-used-linear (positions target)
-  "Returns how much fuel is needed to move a of `positions` to `target`."
+  "Returns how much fuel is needed to move all of `positions` to `target`."
   (loop for p in positions
 	sum (abs (- p target))))
 
 (defun minimize-fuel-used (positions fuel-cost-function)
-  (loop for i from 0 below (apply #'max positions)
+  (loop for i from (apply #'min positions) upto (apply #'max positions)
 	minimize (funcall fuel-cost-function positions i)))
 
 (defun part1 (positions)
