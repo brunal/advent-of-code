@@ -37,11 +37,6 @@
   (loop for display in displays
 	if (= (length display) segment-count) collect display))
 
-(defun supserset-string (d dd)
-  (superset
-   (sort (coerce d 'list) #'char<)
-   (sort (coerce dd 'list) #'char<)))
-
 (defun superset (d dd)
   "Returns whether chars of d are a superset of chars of dd"
   (cond
@@ -50,13 +45,23 @@
     ;; match
     ((char= (car d) (car dd)) (superset (cdr d) (cdr dd)))
     ;; skip to next one
-    ((char< (car d) (car dd)) (superset (cdr d) (cdr dd)))
+    ((char< (car d) (car dd)) (superset (cdr d) dd))
     ((char> (car d) (car dd)) nil)))
+
+
+(defun superset-string (d dd)
+  (superset
+   (sort (coerce d 'list) #'char<)
+   (sort (coerce dd 'list) #'char<)))
 
 (defun segments-shared-count (d dd)
   "Counts the # of segments in common between d and dd."
   (length (intersection (coerce d 'list) (coerce dd 'list))))
 
+;; 5-segments displays are 2, 3, 5.
+;; * Only 3 includes segments from 1. 
+;; * Only 5 shares 3 segments with 4
+;; * Last is 2
 (defun categorize-5-segments (d-5-segments d1 d4)
   "Returns (d2 d3 d5)."
   (let* (
@@ -66,9 +71,13 @@
 	 ;; d5 shares 3 segments with d4
 	 (d5 (find-if (lambda (d) (= (segments-shared-count d d4) 3)) d-5-segments-without-d3))
 	 ;; d2 remains
-	 (d2 (car (remove d5 (remove d3 d-5-segments :test #'string=) :test #'string=))))
+	 (d2 (car (remove d5 d-5-segments-without-d3 :test #'string=))))
     (list d2 d3 d5)))
 
+;; 6-segments displays are 0, 6, 9.
+;; * 4 (or 2) is included in 9
+;; * 7 is included in 0
+;; * Last is 6
 (defun categorize-6-segments (d-6-segments d4 d7)
   "Returns (d0 d6 d9)."
   (let* (
@@ -89,19 +98,11 @@
 	(d8 (first (find-displays-by-segment-count displays 7)))
 	(d-5-segments (find-displays-by-segment-count displays 5))
 	(d-6-segments (find-displays-by-segment-count displays 6)))
-    ;; 5-segments displays are 2, 3, 5.
-    ;; * Only 3 includes segments from 1. 
-    ;; * Only 5 shares 3 segments with 4
-    ;; * Last is 2
     (destructuring-bind (d2 d3 d5) (categorize-5-segments d-5-segments d1 d4)
-      ;; 6-segments displays are 0, 6, 9.
-      ;; * 4 (or 2) is included in 9
-      ;; * 7 is included in 0
-      ;; * Last is 6
       (destructuring-bind (d0 d6 d9) (categorize-6-segments d-6-segments d4 d7)
 	(mapcar (lambda (d) (sort d #'char<))
 		(list d0 d1 d2 d3 d4 d5 d6 d7 d8 d9))))))
-    
+  
 (defun to-number (list)
   (labels ((f (list)
 	     (if list
@@ -123,9 +124,22 @@
    (guess-combination (car line))
    (cdr line)))
 
+(defun guess-print (line)
+  (with-output-to-string (output)
+    (format output "~a --> ~a~%" (cdr line) (guess-output-value line))
+    output))
+
+(defparameter *test-output*
+  '(8394 9781 1197 9361 4873 8418 4548 1625 8717 4315))
+(loop for ti in *test-input*
+      for to in *test-output*
+      do (assert (equalp (guess-output-value ti) to)
+		 (ti to)
+		 "~ainstead of ~a. Decoded digits were~%~a.~%"
+		 (guess-print ti) to (guess-combination (car ti))))
+
 (defun part2 (inputs)
-  ;; (print (apply #'+ (mapcar #'guess-output-value inputs))))
-  (mapcar #'guess-output-value inputs))
+  (apply #'+ (mapcar #'guess-output-value inputs)))
 
 
 (print (part2 *input*))
