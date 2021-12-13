@@ -5,9 +5,10 @@
     (maphash #'print-hash-entry graph)))
 
 (defun add-directed-edge (graph from to)
-  (setf
-   (gethash from graph)
-   (cons to (gethash from graph))))
+  (unless (string= to "start") ; forbide going back to the start.
+    (setf
+     (gethash from graph)
+     (cons to (gethash from graph)))))
 
 (defun add-edges (graph e1 e2)
   (add-directed-edge graph e1 e2)
@@ -31,31 +32,36 @@
       visited-list
       (cons location visited-list)))
 
-;; This is part1
-(defun count-distinct-paths (graph &optional (start "start") (end "end") (visited-list '("start")))
-  (if (string= start end)
+(defun count-distinct-paths
+    (graph neighbours-func mark-visited-func &optional (start "start") (visited-list nil))
+  (if (string= start "end")
       1
-      (loop for neighbour in (visitable-neighbours graph start visited-list)
-	    sum (count-distinct-paths graph neighbour end (mark-visited neighbour visited-list)))))
+      (loop for neighbour in (funcall neighbours-func graph start visited-list)
+	    sum (count-distinct-paths graph neighbours-func mark-visited-func
+				      neighbour
+				      (funcall mark-visited-func neighbour visited-list)))))
+
+(defun part1 (graph)
+  (count-distinct-paths graph #'visitable-neighbours #'mark-visited))
 
 (defparameter *test-input1* (parse-input (uiop:read-file-lines "12.input.test1")))
-(assert (eql (count-distinct-paths *test-input1*) 10))
+(assert (eql (part1 *test-input1*) 10))
 (defparameter *test-input2* (parse-input (uiop:read-file-lines "12.input.test2")))
-(assert (eql (count-distinct-paths *test-input2*) 19))
+(assert (eql (part1 *test-input2*) 19))
 (defparameter *test-input3* (parse-input (uiop:read-file-lines "12.input.test3")))
-(assert (eql (count-distinct-paths *test-input3*) 226))
+(assert (eql (part1 *test-input3*) 226))
 
 (defparameter *input* (parse-input (uiop:read-file-lines "12.input")))
 (print (count-distinct-paths *input*))
 
 (defun visitable-neighbours2 (graph location visited-list)
-  (set-difference
-   (gethash location graph)
-   (if (car visited-list)
+  (if (car visited-list)
+      (set-difference
+       (gethash location graph)
        (cdr visited-list)
-       ;; 2nd visit allowed
-       '("start"))
-   :test #'string=))
+       :test #'string=)
+      ;; 2nd visit allowed
+      (gethash location graph)))
 
 (defun mark-visited2 (location visited-list)
   (cond
@@ -69,11 +75,8 @@
 		   (cdr visited-list))))))
 
 ;; Part2: one small cave can be visited twice.
-(defun part2 (graph &optional (start "start") (end "end") (visited-list '(nil "start")))
-  (if (string= start end)
-      1
-      (loop for neighbour in (visitable-neighbours2 graph start visited-list)
-	    sum (part2 graph neighbour end (mark-visited2 neighbour visited-list)))))
+(defun part2 (graph)
+  (count-distinct-paths graph #'visitable-neighbours2 #'mark-visited2))
 
 (assert (eql (part2 *test-input1*) 36))
 (assert (eql (part2 *test-input2*) 103))
