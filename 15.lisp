@@ -1,85 +1,88 @@
 (ql:quickload 'priority-queue)
 
 (defun parse-input (input)
-  (let ((array (make-array
-		(list (length input) (length (first input))))))
-    (loop for line in input and i from 0
-	  do (loop for item in (coerce line 'list) and j from 0
-		   do (setf (aref array i j) (digit-char-p item))))
-    array))
+  (let ((table (make-hash-table)))
+    (loop for line in input and i from 0 do
+      (loop for item in (coerce line 'list) and j from 0
+	    do (setf (gethash (complex i j) table) (digit-char-p item))))
+    (list
+     (length input)
+     (length (first input))
+     table)))
 
 (defparameter *input* (parse-input (uiop:read-file-lines "15.input")))
 (defparameter *input-test* (parse-input (uiop:read-file-lines "15.input.test")))
 
 (defun update-neighbours (table best-so-far unvisited me)
-  "Update (i j)'s neighbours weigths in best-so-far and unvisited."
-  (loop with (i . j) = me
-	for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
-	for ii = (+ i di)
-	for jj = (+ j dj)
-	if (and (< -1 ii (array-dimension best-so-far 0))
-		(< -1 jj (array-dimension best-so-far 1)))
-	  do (let ((suggested-value
-		     (+ (aref best-so-far i j) (aref table ii jj))))
-	       ;; update the neighbour's weight
-	       (when (< suggested-value (aref best-so-far ii jj))
-		 (setf (aref best-so-far ii jj) suggested-value)
+  "Update neighbours weigths in best-so-far and unvisited."
+  (loop for delta in '(#C(0 1) #C(0 -1) #C(1 0) #C(-1 0))
+	for neighbour = (+ me delta)
+	if (gethash neighbour table) ; it's inside the boundaries
+	  do (let ((suggested-value (+ (gethash me best-so-far)
+				       (gethash neighbour table))))
+	       (when (< suggested-value
+			(gethash neighbour best-so-far most-positive-fixnum))
+		 (setf (gethash neighbour best-so-far) suggested-value)
 		 (priority-queue:pqueue-push
-		  (cons ii jj)
+		  neighbour
 		  suggested-value
 		  unvisited)))))
 
-(defun shortest-path (table best-so-far unvisited current end)
-  "Recursively visits from current until end."
+(defun shortest-path (table best-so-far unvisited current goal)
+  "Recursively visits from current until goal."
   (update-neighbours table best-so-far unvisited current)
-  (unless (equal current end)
+  (unless (= current goal)
     (shortest-path table best-so-far unvisited
-		   (priority-queue:pqueue-pop unvisited) end)))
+		   (priority-queue:pqueue-pop unvisited) goal)))
 
-(defun shortest-path-from-start-to-end (table)
-  (let* ((best-so-far
-	   (make-array (array-dimensions table)
-		       :initial-element most-positive-fixnum))
-	 (max-i (1- (array-dimension table 0)))
-	 (max-j (1- (array-dimension table 1)))
+(defun shortest-path-from-start-to-goal (table start goal)
+  (let* ((best-so-far (make-hash-table :size (hash-table-count table)))
 	 (unvisited (priority-queue:make-pqueue #'<)))
-    (setf (aref best-so-far 0 0) 0)
-    (loop for i from 0 upto max-i
-	  do (loop for j from 0 upto max-j
-		   do (priority-queue:pqueue-push
-		       (cons i j)
-		       (aref best-so-far i j)
-		       unvisited)))
-    (shortest-path table best-so-far unvisited '(0 . 0) `(,max-i . ,max-j))
-    (aref best-so-far max-i max-j)))
+    (setf (gethash start best-so-far) 0)
+    (loop for cell being the hash-keys of table
+	  do (priority-queue:pqueue-push
+	      cell
+	      (gethash cell best-so-far most-positive-fixnum)
+	      unvisited))
+    (shortest-path table best-so-far unvisited start goal)
+    (gethash goal best-so-far)))
 
 (defun part1 (&optional (input *input*))
-  (shortest-path-from-start-to-end input))
+  (destructuring-bind (max-i max-j risks-table) input
+    (shortest-path-from-start-to-goal
+     risks-table #C(0 0) (- (complex max-i max-j) #C(1 1)))))
 (assert (= (part1 *input-test*) 40))
 
 (print (part1))
 
-(defun replicate-map (table times)
-  (let* ((max-i (array-dimension table 0))
-	 (max-j (array-dimension table 1))
-	 (new-table (make-array
-		     (mapcar (lambda (n) (* times n))
-			     (array-dimensions table))))
-	 (loop-after-9 (lambda (n) (1+ (mod (1- n) 9)))))
-    (loop for i from 0 below max-i do
+(defun draw-map (max-i max-j table)
+  (loop for i from 0 below max-i do
+    (progn
       (loop for j from 0 below max-j do
-	(dotimes (horizontal times)
-	  (dotimes (vertical times)
-	    (setf
-	     (aref new-table
-		   (+ i (* max-i horizontal))
-		   (+ j (* max-j vertical)))
-	     (funcall loop-after-9
-		      (+ horizontal vertical (aref table i j))))))))
-    new-table))
+	(format t "~a " (gethash (complex i j) table)))
+      (format t "~%"))))
+
+(defun replicate-map (times max-i max-j table)
+  (let* ((new-table (make-hash-table))
+	 (loop-after-9 (lambda (n) (1+ (mod (1- n) 9)))))
+    (loop for cell being the hash-keys of table
+	    using (hash-value value)
+	  for i = (realpart cell)
+	  for j = (imagpart cell)
+	  do (dotimes (horizontal times)
+	       (dotimes (vertical times)
+		 (setf
+		  (gethash (+ cell
+			      (complex (* max-i horizontal) (* max-j vertical)))
+			   new-table)
+		  (funcall loop-after-9
+			   (+ horizontal vertical value))))))
+    (list (* times max-i)
+	  (* times max-j)
+	  new-table)))
 
 (defun part2 (&optional (input *input*))
-  (part1 (replicate-map input 5)))
+  (part1 (apply #'replicate-map 5 input)))
 (assert (= (part2 *input-test*) 315))
 
 (print (part2))
