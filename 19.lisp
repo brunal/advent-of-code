@@ -88,8 +88,7 @@
 		  do (progn
 		       (format t "delta: ~a~%" delta)
 		       (return-from match-and-translate
-			 (loop for mm2 in m2
-			       collect (vec-op #'+ mm2 delta)))))))
+			 (translate m2 delta))))))
 
 (defun match-and-translate2 (m1 m2)
   "Tries to match measurements in m1 with m2 (without rotating)."
@@ -98,16 +97,12 @@
 	do (loop for mm2 in m2
 		 for delta = (vec-op #'- mm1 mm2)
 		 if (>=
-		     (length
-		      (intersection
-		       (loop for mm22 in m2 collect (vec-op #'+ mm22 delta))
-		       m1 :test #'equal))
+		     (length (intersection (translate m2 delta) m1 :test #'equal))
 		     12)
 		   do (progn
 			(format t "delta: ~a~%" delta)
 			(return-from match-and-translate2
-			  (loop for mm2 in m2
-				collect (vec-op #'+ mm2 delta)))))))
+			  (translate m2 delta))))))
 
 (defun try-merge-measurement (measurement merged-measurements)
   "Returns measurement rotated & translated in case of success)."
@@ -156,7 +151,6 @@
 (defun part1 (&optional (input *input*))
   (length (merge-measurements input)))
 
-
 (defparameter *modified-fifth*
   (translate
    (rotate-scanner-measure (fifth *input-test*) '((0 -1 0) (0 0 -1) (1 0 0)))
@@ -168,11 +162,7 @@
   (third *input-test*)
   (rotate-scanner-measure (fifth *input-test*) '((0 1 0) (1 0 0) (0 0 -1)))))
 
-(defun compose-rotations (r1 r2)
-  )
-
 ;; does not T_T
-;; yeah ofc I need to update the angle
 (loop for o in *orientations*
       for translated = (match-and-translate (third *input-test*)
 					    (rotate-scanner-measure *modified-fifth* o))
