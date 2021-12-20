@@ -11,8 +11,8 @@
 (defparameter *input* (parse (uiop:read-file-lines "19.input")))
 (defparameter *input-test* (parse (uiop:read-file-lines "19.input.test")))
 
-(defun vec-op (op v1 v2)
-  (map 'list op v1 v2))
+(defun vec-op (op &rest vectors)
+  (apply #'map 'list op vectors))
 
 (defun dot-product (a b)
   (apply #'+ (vec-op #'* a b)))
@@ -22,7 +22,7 @@
     (destructuring-bind (bx by bz) b
       (list
        (- (* ay bz) (* az by))
-       (- (* ax bz) (* az bx))
+       (- (* az bx) (* ax bz))
        (- (* ax by) (* ay bx))))))
 
 ;; angle is 1 2 or 3
@@ -40,32 +40,30 @@
   (my-cos (mod (1- angle) 4)))
 
 (defun rotate-vector (vector rotation-vector angle)
-  (map 'list #'+
-       (mapcar (lambda (v) (* v (my-cos angle))) vector)
-       (mapcar (lambda (v) (* v (my-sin angle)))
-	       (cross-product vector rotation-vector))
-       (mapcar (lambda (v) (* v (dot-product vector rotation-vector) (- 1 (my-cos angle))))
-	       rotation-vector)))
+  (vec-op #'+
+	  (mapcar (lambda (v) (* v (my-cos angle))) vector)
+	  (mapcar (lambda (v) (* v (my-sin angle)))
+		  (cross-product vector rotation-vector))
+	  (mapcar (lambda (v) (* v
+				 (dot-product vector rotation-vector)
+				 (- 1 (my-cos angle))))
+		  rotation-vector)))
 
 (defparameter *unit-vectors*
   '((1 0 0) (0 1 0) (0 0 1) (-1 0 0) (0 -1 0) (0 0 -1)))
 
-(defun is-null-vector (v)
-  (every #'zerop v))
-
 (defparameter *orientations*
-  ;; the first x can be in a 6 directions. For each of those, there is 4 possible y.
   (loop for x in *unit-vectors*
 	nconc (loop for y in *unit-vectors*
 		    for z = (cross-product x y)
-		    unless (is-null-vector z)
+		    unless (every #'zerop z)
 		      collect (list x y z))))
 
 (defun matmul (orientation vector)
   (loop for axis in orientation
 	collect (dot-product axis vector)))
 
-(defun rotate-scanner-measure (measure orientation)
+(defun rotate (measure orientation)
   "Returns what measure would be if orientation were (1 0 0) (0 1 0) (0 0 1)."
   ;; orientation can be seen as a matrix be which each measurement should be multiplied.
   (mapcar (lambda (m) (matmul orientation m)) measure))
@@ -73,98 +71,107 @@
 (defun translate (m delta)
   (loop for mm in m collect (vec-op #'+ mm delta)))
 
-(defun match-and-translate (m1 m2)
+(defun find-matching-delta (m1 m2)
   "Tries to match measurements in m1 with m2 (without rotating)."
   ;; build a hash table of (delta vector) -> count. Stop when we found a delta that
-  ;; happens 12+ times.
-  ;; return m2 translated to match m1.
+  ;; happens 12+ times. Return that delta.
   (loop with deltas = (make-hash-table :test #'equal)
 	for mm1 in m1 do
 	  (loop for mm2 in m2
 		for delta = (vec-op #'- mm1 mm2)
 		;; did we find at least 12 combinations of points with this delta?
 		if (>= (incf (gethash delta deltas 0)) 12)
-		  ;; yes. translate all of m2 with it.
-		  do (progn
-		       (format t "delta: ~a~%" delta)
-		       (return-from match-and-translate
-			 (translate m2 delta))))))
-
-(defun match-and-translate2 (m1 m2)
-  "Tries to match measurements in m1 with m2 (without rotating)."
-  ;; for each of m1, for each of m2. Suppose they're the same. How many of m2 are then in m1?
-  (loop for mm1 in m1
-	do (loop for mm2 in m2
-		 for delta = (vec-op #'- mm1 mm2)
-		 if (>=
-		     (length (intersection (translate m2 delta) m1 :test #'equal))
-		     12)
-		   do (progn
-			(format t "delta: ~a~%" delta)
-			(return-from match-and-translate2
-			  (translate m2 delta))))))
+		  do (return-from find-matching-delta delta))))
 
 (defun try-merge-measurement (measurement merged-measurements)
-  "Returns measurement rotated & translated in case of success)."
+  "Returns the transformation to match the measurement."
   (loop for o in *orientations*
-	for rotated-m = (rotate-scanner-measure measurement o)
-	do (loop for mm in merged-measurements
-		 for translated-m = (match-and-translate mm rotated-m)
-		 if translated-m do
+	for rotated-m = (rotate measurement o)
+	do (loop for (mm-delta . mm) in merged-measurements
+		 for delta = (find-matching-delta mm rotated-m)
+		 if delta do
 		   (progn
-		     (format t "orientation ~a~%now starts with ~a~%~%"
-			     o (first translated-m))
-		     (return-from try-merge-measurement translated-m)))))
+		     (format t "orientation ~a~%delta ~a~%used to be~%~a~%now becomes~%~a~%~%"
+			     o delta measurement (translate rotated-m delta))
+		     (return-from try-merge-measurement
+		       (cons delta (translate rotated-m delta)))))))
 
-(defun rot (v) (append (rest v) (list (first v))))
+;; used for debugging
+(defun mergeability-matrix (measurements)
+  ;; the matrix returned here should:
+  ;; * have t in (i i) (measures are compatible with themselves)
+  ;; * be its own transpose (compatible(a,b) == compatible(b,a))
+  ;; * have at least 2 t in each column/row (compatible with itself and another one)
+  (let ((merge-matrix (make-array (list (length measurements)
+					(length measurements)))))
+    (loop for m1 in measurements
+	  for i upfrom 0
+	  do (loop for m2 in measurements
+		   for j upfrom 0
+		   do (loop for o in *orientations*
+			    for m2-rot = (rotate m2 o)
+			    for delta = (find-matching-delta m1 m2-rot)
+			    if delta
+			      do (progn
+				   (setf (aref merge-matrix i j) t)
+				   (return)))))
+    merge-matrix))
 
-(defun merge-measurements (measurements &optional merged-measurements global-map)
-  "Merges all measurements into global-map. merged-measurements is a list of
-   rotated-and-translated-measurement that were already merged into global-map."
+(defun merge-measurements (measurements &optional merged-measurements)
+  "Returns merged measurements: a list of
+   (translation . rotated-and-translated-measurement) with a bonus sentinel."
   (cond
-    ;; init
+    ;; init.
     ((null merged-measurements)
      (format t "start from ~a...~%" (first (first measurements)))
-     (merge-measurements (rest measurements)
-			 (list (first measurements))
-			 (first measurements)))
-    ;; end
-    ((null measurements) global-map)
-    ;; merging
+     (merge-measurements
+      (append (rest measurements) (list (1- (length measurements))))
+      (list (cons '(0 0 0) (first measurements)))))
+    ;; end.
+    ((null measurements) merged-measurements)
+    ;; sanity check after looping through all measurements.
+    ((numberp (first measurements))
+     (if (= (length (rest measurements)) (first measurements))
+	 (error "full loop, still ~a measurements left." (first measurements))
+	 (progn
+	   (format t "full loop, went from ~a to ~a measures to merge.~%"
+		   (first measurements) (length (rest measurements)))
+	   (merge-measurements
+	    ;; do not re-add the sending if we're down to 0.
+	    (if (null (rest measurements))
+		'()
+		(append (rest measurements) (list (length (rest measurements)))))
+	    merged-measurements))))
+    ;; merging.
     (t
-     (format t "try to merge ~a...~%"
-	     (first (first measurements)))
-     (let ((new-m
-	     (try-merge-measurement (first measurements) merged-measurements)))
-       (if new-m
+     (format t "try to merge ~a...~%" (first (first measurements)))
+     (let* ((m (first measurements))
+	    (delta-and-new-m (try-merge-measurement m merged-measurements)))
+       (if delta-and-new-m
 	   ;; update map and recurse
 	   (merge-measurements
 	    (rest measurements)
-	    (cons new-m merged-measurements)
-	    (remove-duplicates (append global-map new-m)))
+	    (cons delta-and-new-m merged-measurements))
 	   ;; queue it for future processing
 	   (merge-measurements
-	    (append (rest measurements) (list (first measurements)))
-	    merged-measurements
-	    global-map))))))
+	    (append (rest measurements) (list m))
+	    merged-measurements))))))
+
+(defun build-global-map (deltas-and-measurements)
+  (remove-duplicates
+   (apply #'append
+	  (mapcar #'cdr deltas-and-measurements))
+   :test #'equal))
 
 (defun part1 (&optional (input *input*))
-  (length (merge-measurements input)))
+  (length (build-global-map (merge-measurements input))))
 
-(defparameter *modified-fifth*
-  (translate
-   (rotate-scanner-measure (fifth *input-test*) '((0 -1 0) (0 0 -1) (1 0 0)))
-   '(-20 -1133 1061)))
+(defun manhattan (v1 v2)
+  (apply #'+
+	 (map 'list (lambda (i1 i2) (abs (- i1 i2))) v1 v2)))
 
-;; works
-(print
- (match-and-translate
-  (third *input-test*)
-  (rotate-scanner-measure (fifth *input-test*) '((0 1 0) (1 0 0) (0 0 -1)))))
-
-;; does not T_T
-(loop for o in *orientations*
-      for translated = (match-and-translate (third *input-test*)
-					    (rotate-scanner-measure *modified-fifth* o))
-      when translated
-	do (format t "~a~%" translated))
+(defun part2 (&optional (input *input*))
+  (let ((scanners (mapcar #'car (merge-measurements input))))
+    (loop for s1 in scanners
+	  maximize (loop for s2 in scanners
+			 maximize (manhattan s1 s2)))))
