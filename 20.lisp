@@ -1,14 +1,11 @@
-
 (defun make-image-array (image-list)
-  ;; make sure to include a 2-pixel band of dark pixels all around the image.
-  (let* ((lines (length image-list))
-	 (columns (length (first image-list)))
-	 (array (make-array (list (+ 4 lines) (+ 4 columns))
-			    :initial-element 0)))
+  (let ((array
+	  (make-array (list (length image-list) (length (first image-list)))
+		      :initial-element 0)))
     (loop for line in image-list
-	  for i upfrom 2
+	  for i upfrom 0
 	  do (loop for pixel in line
-		   for j upfrom 2
+		   for j upfrom 0
 		   do (setf (aref array i j) pixel)))
     array))
 
@@ -36,36 +33,66 @@
       acc
       (bin-list-to-number (rest bin) (+ (* 2 acc) (first bin)))))
 
-(defun decode-pixel (iea-char-array input-image i j)
+(defun decode-pixel (iea-char-array get-pixel i j)
+  "Decodes the pixel at (i, j) by looking at (i-1, j-1)...(i+1, j+1)."
   (aref iea-char-array
 	(bin-list-to-number
 	 (loop for ii from (1- i) upto (1+ i)
 	       nconc (loop for jj from (1- j) upto (1+ j)
-			   collect (aref input-image ii jj))))))
+			   collect (funcall get-pixel ii jj))))))
 
-(defun decode-image (iea-char-array input-image)
-  (let ((output-image
-	  (make-array (mapcar (lambda (d) (+ 2 d)) (array-dimensions input-image))
+(defun get-pixel (input-image i j default)
+  "Returns the pixel at (i j) in input-image, or default if outside."
+  (if (and (< -1 i (array-dimension input-image 0))
+	   (< -1 j (array-dimension input-image 1)))
+      (aref input-image i j)
+      default))
+
+(defun decode-image (iea-char-array input-image default)
+  "Returns (list decoded new-default)."
+  ;; we add a 1-pixel border to input-image size.
+  (let ((get-pixel (lambda (i j) (get-pixel input-image i j default)))
+	(output-image
+	  (make-array (mapcar (lambda (d) (+ 2 d))
+			      (array-dimensions input-image))
 		      :initial-element 0)))
-    (loop for i from 1 below (1- (array-dimension input-image 0))
-	  do (loop for j from 1 below (1- (array-dimension input-image 1))
-		   do (setf (aref output-image (1+ i) (1+ j))
-			    (decode-pixel iea-char-array input-image i j))))
-    output-image))
+    (loop for i from 0 below (array-dimension output-image 0)
+	  do (loop for j from 0 below (array-dimension output-image 1)
+		   do (setf (aref output-image i j)
+			    (decode-pixel iea-char-array
+					  get-pixel
+					  (1- i)
+					  (1- j)))))
+    (list output-image
+	  ;; recompute the default value by checking the new value of something
+	  ;; fully outside.
+	  (decode-pixel iea-char-array get-pixel -2 -2))))
 
 (defun count-lit-pixels (image)
   (loop for i from 0 below (array-dimension image 0)
 	sum (loop for j from 0 below (array-dimension image 1)
 		  count (= 1 (aref image i j)))))
 
-  
 (defun draw-image (image)
   (loop for i from 0 below (array-dimension image 0)
 	do (loop for j from 0 below (array-dimension image 1)
 		 do (format t "~a " (if (zerop (aref image i j)) #\. #\#))
-		    finally (terpri))))
+		 finally (terpri))))
+
+(defun decode-times (iea-char-array count image default)
+  (if (zerop count)
+      image
+      (apply #'decode-times
+	     iea-char-array
+	     (1- count)
+	     (decode-image iea-char-array
+			   image
+			   default))))
 
 (defun part1 (&optional (input *input*))
   (count-lit-pixels
-   (decode-image (car input) 
-		 (decode-image (car input) (cdr input)))))
+   (decode-times (car input) 2 (cdr input) 0)))
+
+(defun part2 (&optional (input *input*))
+  (count-lit-pixels
+   (decode-times (car input) 50 (cdr input) 0)))
