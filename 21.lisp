@@ -1,6 +1,3 @@
-(ql:quickload 'queues)
-(asdf:oos 'asdf:load-op :queues.priority-queue)
-
 (defun parse (input)
   (mapcar (lambda (line) (digit-char-p (first (last (coerce line 'list))))) input))
 
