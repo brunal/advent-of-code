@@ -8,11 +8,10 @@
 	       (nth-value 1 (cl-ppcre:scan-to-strings *line-regex* line))
 	       'list)))
     (cons (if (string= (first bits) "on") t nil)
-	  (mapcar
-	   #'parse-integer
-	   (rest bits)))))
+	  (loop for (start end) on (rest bits) by #'cddr
+		collect (complex (parse-integer start) (parse-integer end))))))
 (assert (equal (parse-line "on x=-20..26,y=-36..17,z=-47..7")
-	       '(t . (-20 26 -36 17 -47 7))))
+	       '(t . (#C(-20 26) #C(-36 17) #C(-47 7)))))
 
 (defun parse (input)
   (mapcar #'parse-line input))
@@ -22,22 +21,18 @@
 
 ;; first part, not very interesting.
 
-(defun within-bounds? (command)
-  (every (lambda (i) (<= -50 i 50))
-	 (rest command)))
-
 (defun offset (i)
   (+ 50 i))
 
-(defun build-box-dumb(input)
+(defun build-box-dumb (input)
   ;; we're interested in the [-50, 50]^3 box, which has 101 elements on each side.
   (let ((box (make-array '(101 101 101) :initial-element nil)))
-    (loop for command in input
-	  for (action x1 x2 y1 y2 z1 z2) = command
-	  if (within-bounds? command)
-	    do (loop for x from x1 upto x2
-		     do (loop for y from y1 upto y2
-			      do (loop for z from z1 upto z2
+    (loop for (action . coordinates) in input
+	  for (xx yy zz) = coordinates
+	  if (every (lambda (i) (<= -50 i 50)) coordinates)
+	    do (loop for x from (realpart xx) upto (imagpart xx)
+		     do (loop for y from (realpart yy) upto (imagpart yy)
+			      do (loop for z from (realpart zz) upto (imagpart zz)
 				       do (setf (aref box (offset x) (offset y) (offset z)) action)))))
     box))
 
@@ -146,13 +141,6 @@
 	(cons (rest command) new-lit-zones)
 	new-lit-zones)))
 
-(defun as-complex (input)
-  (mapcar (lambda (line) (list (first line)
-			       (complex (second line) (third line))
-			       (complex (fourth line) (fifth line))
-			       (complex (sixth line) (seventh line))))
-	  input))
-
 (defun segment-size (segment)
   (1+ (- (imagpart segment) (realpart segment))))
 
@@ -162,7 +150,7 @@
 (defun part2-first-try (&optional (input *input*))
   (apply #'+
 	 (mapcar #'box-size
-		 (reduce #'add-command (as-complex input) :initial-value nil))))
+		 (reduce #'add-command input :initial-value nil))))
 
 ;; Initial part2 approach did not work...
 ;; Instead, when we merge:
@@ -184,7 +172,7 @@
 	(nconc intersection-boxes boxes-and-value))))
 
 (defun part2 (&optional (input *input*))
-  (loop for (box . value) in (reduce #'add-command2 (as-complex input) :initial-value nil)
+  (loop for (box . value) in (reduce #'add-command2 input :initial-value nil)
 	sum (* value (box-size box))))
 (assert (= (part2 *input-test*)
 	   2758514936282235))
