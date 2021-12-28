@@ -2,6 +2,7 @@
 (ql:quickload 'cl-ppcre)
 
 (defun parse-instruction (line)
+  "Returns a list of (instruction-symbol arg1 arg2-or-nil)."
   (let ((pieces (cl-utilities:split-sequence #\Space line)))
     (list (read-from-string (first pieces))
 	  (read-from-string (second pieces))
@@ -23,26 +24,8 @@
        (truncate (/ int 2))
        (cons (mod int 2) acc))))
 
-;; ;; lowest bits first! while our program wants highest bits first.
-;; (defparameter *start-model-value* (make-list 14 :initial-element 9))
-;; ;; decrements the first bit first.
-;; (defun next-test-value (current-value)
-;;   (when (null current-value) (error "down to zero!"))
-;;   (if (= (first current-value) 1)
-;;       (cons 9 (next-test-value (rest current-value)))
-;;       (cons (1- (first current-value)) (rest current-value))))
-
-(defparameter *start-model-value* (make-list 14 :initial-element 1))
-;; decrements the first bit first.
-(defun next-test-value (current-value)
-  (when (null current-value) (error "up to max!"))
-  (if (= (first current-value) 9)
-      (cons 1 (next-test-value (rest current-value)))
-      (cons (1+ (first current-value)) (rest current-value))))
-
 (defun make-instruction (instruction symbol-for-next-input-bit arg1 &optional arg2)
   (ecase instruction
-    ;; protect against reading too much? or make it an array?
     (inp (values `(setf ,arg1 ,symbol-for-next-input-bit) t))
     (add `(incf ,arg1 ,arg2))
     (mul `(setf ,arg1 (* ,arg1 ,arg2)))
@@ -77,6 +60,14 @@
 
 (defparameter *program-code* (make-program *input*))
 (defparameter *program-fun* (eval *program-code*))
+
+(defparameter *start-model-value* (make-list 14 :initial-element 1))
+;; decrements the first bit first.
+(defun next-test-value (current-value)
+  (when (null current-value) (error "up to max!"))
+  (if (= (first current-value) 9)
+      (cons 1 (next-test-value (rest current-value)))
+      (cons (1+ (first current-value)) (rest current-value))))
 
 (defun part1-compile (&optional (current-test-value *start-model-value*))
   (if (zerop (fourth (apply #'funcall *program-fun* (reverse current-test-value))))
@@ -120,14 +111,10 @@ mod w 2"))
 ;; my wonderful approach above did not work.
 ;; looking at the code, there's repeated bits that do the following transformation:
 (defun block-transform (param1 param2 param3)
-  (declare (type fixnum param1 param2 param3))
-  (declare (optimize (speed 3)))
   (lambda (input-code-digit z)
-    (declare (type fixnum input-code-digit z))
-    (let* ((x (the fixnum (if (= input-code-digit
-				 (+ param2 (floor (mod z 26))))
-			      0 1)))
-	   (y (the fixnum (* x (+ input-code-digit param3))))
+    (let* ((x (if (= input-code-digit (+ param2 (floor (mod z 26))))
+		  0 1))
+	   (y (* x (+ input-code-digit param3)))
 	   (z (+ y
 		 (floor (/ (* (1+ (* x 25))
 			      z)
@@ -170,7 +157,7 @@ mod w 2"))
 
 (defun decode (input-bits)
   (loop with z = 0
-	for transform in (parse-program lines)
+	for transform in (parse-program *lines*)
 	for bit in input-bits
 	do (setf z (funcall transform bit z))
 	finally (return z)))
@@ -179,3 +166,5 @@ mod w 2"))
   (if (zerop (decode (reverse current-test-value)))
       current-test-value
       (part1 (next-test-value current-test-value))))
+
+;; in the end I solved it with pen & paper.
