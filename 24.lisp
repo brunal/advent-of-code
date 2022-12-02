@@ -122,6 +122,7 @@ mod w 2"))
       z)))
 
 (defun parse-block (lines)
+  "Returns a blocks' 3 parameters.block-transform"
   (let ((line-idx -1) param1 param2 param3)
     (flet ((next-line () (nth (incf line-idx) lines)))
       (flet ((lineq (val) (assert (equal val (next-line)))))
@@ -149,13 +150,17 @@ mod w 2"))
 	      (parse-integer (third (cl-utilities:split-sequence #\Space (next-line)))))
 	(lineq "mul y x")
 	(lineq "add z y"))
-      (block-transform param1 param2 param3))))
+      (list param1 param2 param3))))
 
-(defun parse-program (lines)
+(defun get-program-parameters (lines)
   (loop for l on lines by (lambda (l) (nthcdr 18 l))
 	collect (parse-block l)))
-
-(defun decode (input-bits)
+  
+(defun parse-program (lines)
+  (mapcar (lambda (params) (apply #'block-transform params))
+	  (get-program-parameters lines)))
+  
+(defun decode (lines input-bits)
   (loop with z = 0
 	for transform in (parse-program *lines*)
 	for bit in input-bits
@@ -163,7 +168,7 @@ mod w 2"))
 	finally (return z)))
 
 (defun part1 (&optional (current-test-value *start-model-value*))
-  (if (zerop (decode (reverse current-test-value)))
+  (if (zerop (decode (reverse current-test-value) *lines*))
       current-test-value
       (part1 (next-test-value current-test-value))))
 
