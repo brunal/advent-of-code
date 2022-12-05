@@ -1,10 +1,9 @@
-(require 'cl-utilities)
+(require 'uiop)
 
 (defun parse-command (line)
-  (let ((words (cl-utilities:split-sequence #\Space line)))
-    (mapcar
-     #'parse-integer
-     (list (second words) (fourth words) (sixth words)))))
+  (let ((words (uiop:split-string line :separator " ")))
+    (loop for pos in '(1 3 5)
+	  collect (parse-integer (nth pos words)))))
 
 (defun parse-commands (lines)
   ; Discard the setup plan: we've harcoded it below.
@@ -44,10 +43,13 @@
 	 (loop for i from 1 upto (hash-table-count crates)
 	       collect (string (car (gethash i crates))))))
 
-(defun part1 (commands)
+(defun solve (commands move-logic)
   (let ((crates (get-init-crates)))
-    (apply-commands #'apply-command-part-1 crates commands)
+    (apply-commands move-logic crates commands)
     (top-crates-to-string crates)))
+
+(defun part1 (commands)
+  (solve commands #'apply-command-part-1))
 
 (print (part1 *commands*))
 
@@ -58,8 +60,6 @@
   (setf (gethash from crates) (subseq (gethash from crates) count)))
 
 (defun part2 (commands)
-  (let ((crates (get-init-crates)))
-    (apply-commands #'apply-command-part-2 crates commands)
-    (top-crates-to-string crates)))
+  (solve commands #'apply-command-part-2))
 
 (print (part2 *commands*))
