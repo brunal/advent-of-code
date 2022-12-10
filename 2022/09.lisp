@@ -23,28 +23,35 @@ R 2" :separator (string #\newline)))
 		  (direction quantity) (uiop:split-string line :separator " ")
 		(n-times (parse-integer quantity) (intern direction)))))
 
-(defun update-locations (command head tail)
+(defun update-knot (head tail)
+  (let* ((dx (- (car head) (car tail)))
+	 (dy (- (cdr head) (cdr tail)))
+	 (distance (sqrt (+ (expt dx 2) (expt dy 2)))))
+    (when (>= distance 2)
+       (setf (car tail) (+ (car tail) (signum dx)))
+       (setf (cdr tail) (+ (cdr tail) (signum dy))))))
+
+(defun update-locations (rope command)
   (case command
-    (U (incf (car head)))
-    (D (decf (car head)))
-    (R (incf (cdr head)))
-    (L (decf (cdr head))))
-  ; FIXME: if head & tail not aligned, need to move diagonally.
-  (when (> (car head) (1+ (car tail))) (incf (car tail)))
-  (when (< (car head) (1- (car tail))) (decf (car tail)))
-  (when (> (cdr head) (1+ (cdr tail))) (incf (cdr tail)))
-  (when (< (cdr head) (1- (cdr tail))) (decf (cdr tail))))
+    (U (incf (car (first rope))))
+    (D (decf (car (first rope))))
+    (R (incf (cdr (first rope))))
+    (L (decf (cdr (first rope)))))
+  (loop for (knot next) on rope when next do (update-knot knot next)))
     
-(defun tail-locations-table (commands)
-  (let ((tail-locations (make-hash-table :test #'equal))
-	(head (cons 0 0))
-	(tail (cons 0 0)))
+(defun tail-locations-table (rope commands)
+  (let ((tail-locations (make-hash-table :test #'equal)))
     (loop for command in commands
 	  do (progn
-	       (update-locations command head tail)
-	       ; (format t "after ~A, locations: ~A & ~A~%" command head tail)
-	       (setf (gethash (copy-tree tail) tail-locations) 1)))
+	       (update-locations rope command)
+	       (setf (gethash (copy-tree (last rope)) tail-locations) 1)))
     tail-locations))
 
+(defun make-rope (length)
+  (loop for i from 0 below length collect (cons 0 0)))
+
 (defun part1 (&optional (input *input*))
-  (hash-table-count (tail-locations-table (parse-commands input))))
+  (hash-table-count (tail-locations-table (make-rope 2) (parse-commands input))))
+
+(defun part2 (&optional (input *input*))
+  (hash-table-count (tail-locations-table (make-rope 10) (parse-commands input))))
