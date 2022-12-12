@@ -1,11 +1,15 @@
 (require :uiop)
-;; (require :queues)
 
 (defparameter *input* (uiop:read-file-lines "12.input"))
+(defparameter *input-test* (uiop:split-string "Sabqponm
+abcryxxl
+accszExk
+acctuvwj
+abdefghi" :separator (string #\newline)))
 
 (defun char-to-height (char)
   (- (char-int char) (char-int #\a)))
-  
+
 (defun parse-input (input)
   (let ((array (make-array (list (length input) (length (first input)))))
 	(start nil)
@@ -31,57 +35,57 @@
 	  for yy = (+ y dy)
 	  if (<= 0 xx (1- xmax))
 	    if (<= 0 yy (1- ymax))
-	      if (>= 1 (aref map xx yy) (aref map x y))
+	      if (<= (aref map xx yy) (1+ (aref map x y)))
 		collect (cons xx yy))))
 
 ;; simple queue definition
 ;; backed by a list. represented by 2 pointers: first cons cell, last cons cell.
-(defun make-queue (initial-element)
-  (let ((queue (list initial-element)))
-    (cons queue queue)))
+(defun make-queue () (list nil nil))
 
 (defun pushq (q elem)
-  ;; push it
-  (setf (cdr (cdr q)) (cons elem nil))
-  ;; update the last cons cell (todo: merge with line above)
-  (setf (cdr q) (cdr (cdr q)))
+  ;; push it & update the last cons cell.
+  (setf (cdr q)
+	(setf (cddr q) (cons elem nil)))
   (when (emptyq q)
-    (setf (car q) (cdr q))))
+    ;; fix the head pointer.
+    (setf (car q) (cdr q)))
+  q)
 
 (defun popq (q)
-  (let ((start (car q)))
-    (setf (car q) (cdr (car q)))
-    (car start)))
+  (prog1 (caar q)
+    (setf (car q) (cdar q))))
 
-(defun emptyq (q)
-  (null (car q)))
+(defun emptyq (q) (null (car q)))
 
 (defun find-shortest-path (map start end &aux
-					   (queue (make-queue (cons start 0))); (queues:make-queue :simple-queue))
-					   (visited (make-hash-table)))
+					   (queue (make-queue))
+					   (visited (make-hash-table :test #'equal)))
+  (pushq queue (cons start 0))
   (setf (gethash start visited) t)
-  ;; (loop for (current . score) = (queues:qpop queue)
   (loop while (not (emptyq queue))
 	for (current . score) = (popq queue)
 	do (if (equal current end)
-	       score
+	       (return score)
 	       (loop for n in (neighbours map current)
 		     if (null (gethash n visited))
 		       do (progn
 			    (setf (gethash n visited) t)
 			    (pushq queue (cons n (1+ score))))))))
-			    ;; (queues:qpush queue (cons n (1+ score))))))))
 
 (defun part1 (&optional (input *input*))
   (multiple-value-bind (map start end) (parse-input input)
     (find-shortest-path map start end)))
 
-;; (defun find-shortest-path (map start end current &optional
-;; 						   (queue (queues:make-queue))
-;; 						   (visited (make-hash-table)))
-;;  (unless (gethash current map)
-;;    (setf (gethash current map) t)
-;;    (loop for neighbour in (neighbours map current)
-;;	  (find-shortest-path (map start end neighbour visited)))))
+(defun starting-points-list (map)
+  (loop for i from 0 below (array-dimension map 0)
+	nconc (loop for j from 0 below (array-dimension map 1)
+		    if (eql 0 (aref map i j))
+		      collect (cons i j))))
 
-
+(defun part2 (&optional (input *input*))
+  (multiple-value-bind (map start end) (parse-input input)
+    (declare (ignore start))
+    (apply #'min
+	   (remove nil
+		   (loop for start in (starting-points-list map)
+			 collect (find-shortest-path map start end))))))
