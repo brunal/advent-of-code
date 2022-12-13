@@ -48,32 +48,27 @@
     ((and ll rl) (cond ((and (null left) (null right)) 'U)
 		       ((null left) 'S)
 		       ((null right) 'G)
-		       (t (case (cmp (first left) (first right))
+		       (t (case (cmp-packets (first left) (first right))
 			    (S 'S)
 			    (G 'G)
-			    (U (cmp (rest left) (rest right)))))))
-    (rl (cmp (list left) right))
-    (ll (cmp left (list right)))))
-
+			    (U (cmp-packets (rest left) (rest right)))))))
+    (rl (cmp-packets (list left) right))
+    (ll (cmp-packets left (list right)))))
   
-(defun part1 (&optional packets *packets*)
+(defun part1 (&optional (packets *packets*))
   (loop for (left right) in packets
 	for i from 1 upto (length packets)
-	when (eq 'S (cmp-packets left right))
+	if (eq 'S (cmp-packets left right))
 	  sum i))
   
 (defun packet-smaller-p (p1 p2)
-  (case (cmp-packets p1 p2)
+  (ecase (cmp-packets p1 p2)
     (S t)
-    (t nil)))
+    (G nil)))
 
-(defun part2  (&optional packets *packets*)
-  (let* ((special-packet1 '((2)))
-	 (special-packet2 '((6)))
-	 (sorted (sort (apply #'append (list special-packet1 special-packet2) packets)
+(defun part2  (&optional (packets *packets*))
+  (let* ((special-packets '(((2)) ((6))))
+	 (sorted (sort (apply #'append special-packets (copy-tree packets))
 		       #'packet-smaller-p)))
-    (apply #'*
-	   (loop for packet in sorted
-		 for i from 1 upto (length sorted)
-		 when (or (equal packet special-packet1) (equal packet special-packet2))
-		   collect i))))
+    (apply #'* (loop for special in special-packets
+		     collect (1+ (position special sorted))))))
