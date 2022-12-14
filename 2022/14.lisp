@@ -23,8 +23,8 @@
   (loop for (start end) on steps
 	while end
 	nconc (line-between start end)))
-    
-(defun draw-cave (&optional (input *input*) &aux (cave (make-hash-table :test #'eql)))
+
+(defun build-cave (&optional (input *input*) &aux (cave (make-hash-table :test #'eql)))
   (loop for line in input
 	for steps = (parse-line line)
 	do (loop for cell in (list-cells steps)
@@ -58,18 +58,42 @@
 	       (setf (gethash location cave) 'S))))
 
 (defun part1 (&optional (input *input*))
-  (sand-until (draw-cave input) 'END))
+  (let ((cave (build-cave input)))
+    (values
+     (sand-until cave 'END)
+     cave)))
 
 (defun add-floor-to-cave (cave &aux (max-depth (deepest-cave-point cave)))
   (let* ((new-floor-depth (+ 2 max-depth))
-	 (new-floor-start (complex (- *sand-start* (1+ new-floor-depth)) new-floor-depth))
-	 (new-floor-end (complex (+ *sand-start* (1+ new-floor-depth)) new-floor-depth)))
+	 (new-floor-start (complex (- *sand-start* new-floor-depth) new-floor-depth))
+	 (new-floor-end (complex (+ *sand-start* new-floor-depth) new-floor-depth)))
     (loop for new-floor-tile in (line-between new-floor-start new-floor-end)
 	  do (setf (gethash new-floor-tile cave) 'R))))
-    ;; add a floor at this depth, from 
 
 (defun part2 (&optional (input *input*))
-  (let ((cave (draw-cave input)))
+  (let ((cave (build-cave input)))
     (add-floor-to-cave cave)
     ;; sand-until stop right before the sand stops at goal, so we need to 1+ it.
-    (1+ (sand-until cave *sand-start*))))
+    (values
+     (1+ (sand-until cave *sand-start*))
+     cave)))
+
+
+;; for fun
+;; usage:
+;; (multiple-value-bind (ret cav) (part2) (draw-cave cave))
+(defun draw-cave (cave)
+  (loop for key being the hash-keys in cave
+	for x = (realpart key)
+	for y = (imagpart key)
+	minimize x into min-x
+	maximize x into max-x
+	maximize y into max-y
+	finally (loop for y from 0 upto max-y
+		      do (print (coerce
+				 (loop for x from min-x upto max-x
+				       collect (case (gethash (complex x y) cave)
+						 (S #\.)
+						 (R #\#)
+						 ((nil) #\space)))
+				 'string)))))
