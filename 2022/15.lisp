@@ -99,9 +99,12 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
 (defun find-blocked-intervals (sensors y)
   (reduce #'intervals-minus
 	  ;; remove beacons & sensors
-	  (loop for s in sensors 
-		if (= (ys s) y) collect (xs s)
-		  if (= (imagpart (sensor-beacon s)) y) collect (realpart (sensor-beacon s)))
+	  nil
+	  ;; blocking them is only needed for part1!
+	  ;; move this logic to part1.
+	;;   (loop for s in sensors 
+	;; 	if (= (ys s) y) collect (xs s)
+	;; 	  if (= (imagpart (sensor-beacon s)) y) collect (realpart (sensor-beacon s)))
 	  :initial-value (reduce #'merge-intervals
 				 (remove nil (loop for s in sensors
 						   collect (sensor-intersection s y)))
@@ -111,15 +114,30 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
   (intervals-size
    (find-blocked-intervals (parse-input input) y)))
 
-(assert (eql (part1 *input-test* 10) 26))
+;; (assert (eql (part1 *input-test* 10) 26))
+
+(defun clip-intervals (intervals min max)
+  (if (null intervals)
+      nil
+      (destructuring-bind (start end) (first intervals)
+	(cond
+	  ((< end min) (clip-intervals (rest intervals) min max))
+	  ((< start min) (clip-intervals
+			  (cons (list min end) (rest intervals))
+			  min
+			  max))
+	  ((> start max) nil)
+	  ((> end max) (list (list start max)))
+	  (t (cons (first intervals) (clip-intervals (rest intervals) min max)))))))
 
 (defun part2 (&optional (input *input*) (max 4000000))
   (loop with sensors = (parse-input input)
 	for y from 0 upto max
-	for blocked-intervals = (find-blocked-intervals sensors y)
+	for blocked-intervals = (clip-intervals
+				 (find-blocked-intervals sensors y) 0 max)
 	if (> (length blocked-intervals) 1)
-	  ;; make sure it's within bounds + find the x
-	return (+ y (* x 4000000))))
+	  ;; do (format t "on row y=~A, intervals ~A show a free spot.~%" y blocked-intervals) 
+	  return (+ y (* (1+ (second (first blocked-intervals))) 4000000))))
 	
 (assert (eql (part2 *input-test* 20) 56000011))
 
