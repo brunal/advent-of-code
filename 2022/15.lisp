@@ -50,16 +50,6 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
     (unless (< dx 0)
       (list (- (xs sensor) dx) (+ (xs sensor) dx)))))
 
-(defun count-positions (intervals exclude)
-  "Returns the number of points inside any of intervals, outside exclude."
-  (let ((positions (make-hash-table :test #'eql)))
-    (loop for (x y) in intervals
-	  do (loop for i from x upto y
-		   do (setf (gethash i positions) t)))
-    (loop for e in exclude
-	  do (remhash e positions))
-    (hash-table-count positions)))
-
 (defun merge-interval (i1 i2)
   "Tries to merge 2 intervals. Either returns the union, or (values smallest largest)."
   (cond
@@ -80,7 +70,7 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
 	    (cons i1 (merge-intervals (rest intervals) i2))))))
 
 (defun intervals-minus (intervals minus)
-  "Returns a new list of sorted intervals, not containing minus."
+  "Returns a new list of sorted intervals, not containing minus (integer)."
   (if (null intervals)
       nil
       (destructuring-bind (start end) (first intervals)
@@ -97,24 +87,21 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
   (loop for (start end) in intervals sum (1+ (- end start))))
 
 (defun find-blocked-intervals (sensors y)
-  (reduce #'intervals-minus
-	  ;; remove beacons & sensors
-	  nil
-	  ;; blocking them is only needed for part1!
-	  ;; move this logic to part1.
-	;;   (loop for s in sensors 
-	;; 	if (= (ys s) y) collect (xs s)
-	;; 	  if (= (imagpart (sensor-beacon s)) y) collect (realpart (sensor-beacon s)))
-	  :initial-value (reduce #'merge-intervals
-				 (remove nil (loop for s in sensors
-						   collect (sensor-intersection s y)))
-				 :initial-value nil)))
+  (reduce #'merge-intervals
+	  (remove nil (loop for s in sensors
+			    collect (sensor-intersection s y)))
+	  :initial-value nil))
 
 (defun part1 (&optional (input *input*) (y 2000000))
-  (intervals-size
-   (find-blocked-intervals (parse-input input) y)))
+  (let ((sensors (parse-input input)))
+    (intervals-size
+     (reduce #'intervals-minus
+	     (loop for s in sensors
+		   if (= (ys s) y) collect (xs s)
+		     if (= (imagpart (sensor-beacon s)) y) collect (realpart (sensor-beacon s)))
+	     :initial-value (find-blocked-intervals sensors y)))))
 
-;; (assert (eql (part1 *input-test* 10) 26))
+(assert (eql (part1 *input-test* 10) 26))
 
 (defun clip-intervals (intervals min max)
   (if (null intervals)
@@ -136,61 +123,6 @@ Sensor at x=20, y=1: closest beacon is at x=15, y=3" :separator (string #\newlin
 	for blocked-intervals = (clip-intervals
 				 (find-blocked-intervals sensors y) 0 max)
 	if (> (length blocked-intervals) 1)
-	  ;; do (format t "on row y=~A, intervals ~A show a free spot.~%" y blocked-intervals) 
 	  return (+ y (* (1+ (second (first blocked-intervals))) 4000000))))
 	
 (assert (eql (part2 *input-test* 20) 56000011))
-
-;; (defun points-surrounding (sensor)
-;;   "Returns the 4 points that bound sensor box."
-;;   (let ((d (1+ (sensor-distance sensor)))
-;; 	(s (sensor-sensor sensor)))
-;;     (list (+ s d)
-;; 	  (+ s (complex 0 d))
-;; 	  (- s d)
-;; 	  (- s (complex 0 d)))))
-;; 
-;; (defun clip-axis (axis min max)
-;;   "Given 2 pairs of points representing a line, clips it inside min max."
-;;   (destructuring-bind (start end) axis
-;;     (let ((x0 (realpart start))
-;; 	  (y0 (imagpart start))
-;; 	  (xend (realpart end))
-;; 	  (yend (imagpart end)))
-;;       (flet ((y (x) (+ y0 (/ (* (- yend y0) (- x x0)) (- xend x0))))
-;; 	     (x (y) (+ x0 (/ (* (- xend x0) (- y y0)) (- yend y0)))))
-;; 	;; don't reuse {x,y}{0,end} as we modify {start,end}.
-;; 	;; TODO: refactor...
-;; 	;; clip x0
-;; 	(when (< (realpart start) min)
-;; 	  (setf start (complex min (y min))))
-;; 	(when (> (realpart start) max)
-;; 	  (setf start (complex max (y max))))
-;; 	;; clip xend
-;; 	(when (< (realpart end) min)
-;; 	  (setf end (complex min (y min))))
-;; 	(when (> (realpart end) max)
-;; 	  (setf end (complex max (y max))))
-;; 	;; clip y0
-;; 	(when (< (imagpart start) min)
-;; 	  (setf start (complex (x min) min)))
-;; 	(when (> (imagpart start) max)
-;; 	  (setf start (complex (x max) max)))
-;; 	;; clip yend
-;; 	(when (< (imagpart start) min)
-;; 	  (setf start (complex (x min) min)))
-;; 	(when (> (imagpart start) max)
-;; 	  (setf start (complex (x max) max)))
-;;     (list start end)))))
-
-;; (defun axes-surrounding (sensor min max)
-;;   (destructuring-bind (p1 p2 p3 p4) (points-surrounding sensor)
-;;     (mapcar (lambda (axis) (clip-axis axis min max))
-;; 	    `((,p4 ,p1) (,p1 ,p2) (,p2 ,p3) (,p3 ,p4)))))
-
-;; (defun find-free-spot (sensors min max)
-;;   (let ((axes (loop for s in sensor
-;; 		    collect (axes-surrounding s min max))))
-;;     ;; build the list of candidates: find 4 axes from different sensors that
-;;     ;; have an intersection.
-;;   )
