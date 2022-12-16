@@ -1,6 +1,6 @@
 (require :uiop)
 (require :cl-ppcre)
-
+(require :alexandria)
 
 (defparameter *input* (uiop:read-file-lines "16.input"))
 (defparameter *input-test* (uiop:split-string "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB
@@ -24,55 +24,104 @@ Valve JJ has flow rate=21; tunnel leads to valve II" :separator (string #\newlin
 	  collect (cl-ppcre:register-groups-bind (valve flow paths)
 		      (*line-pattern* line)
 		    (setf volumes
-			  (acons valve (parse-integer flow) volumes))
+			  (acons (intern valve) (parse-integer flow) volumes))
 		    (setf tunnels
-			  (acons valve
+			  (acons (intern valve)
 				 (loop for valve in (uiop:split-string paths :separator ", ")
-				       unless (string= "" valve) collect valve)
+				       unless (string= "" valve) collect (intern valve))
 				 tunnels))))
-    (values volumes tunnels)))
+    (cons volumes tunnels)))
 
+(defun get-edge-weight (graph from to)
+  (cdr (assoc to (cdr (assoc from graph)))))
 
-(defun max-pressure-release (volume tunnels current-spot time-left valves-open)
-  (if (eql 0 time-left)
-      0
-      (let ((result-if-open-current-spot
-	      (if (or (eql 0 (cdr (assoc current-spot volume :test #'string=)))
-		      (member current-spot valves-open))
-		  ;; already open or worthless
-		  0
-		  ;; recurse
-		  (+ (* time-left (cdr (assoc current-spot tunnels :test #'string=)))
-		     (max-pressure-release volume
-					   tunnels
-					   current-spot
-					   (1- time-left)
-					   (cons current-spot valves-open))))))
-	(apply #'max
-	       result-if-open-current-spot
-	       (loop for next-spot in (cdr (assoc current-spot tunnels :test #'string=))
-		     collect (max-pressure-release volume tunnels next-spot (1- time-left) valves-open))))))
+(defun set-edge-weight (graph start end weight)
+  (let* ((start-and-destinations (assoc start graph))
+	 (edge-weight (assoc end (cdr start-and-destinations))))
+    (if (null edge-weight)
+	(push (cons end weight) (cdr start-and-destinations))
+	(setf (cdr edge-weight) weight))))
 
-(defun part1 (input)
-  (multiple-value-bind (volume tunnels) (parse-input input)
-    (max-pressure-release volume tunnels "AA" 30 nil)))
+(defun build-complete-graph (tunnels)
+  ;; fill in initial values.
+  (let ((edges (loop for (from . tos) in tunnels collect from))
+	(graph (loop for (from . tos) in tunnels
+		     collect (cons from (loop for to in tos collect (cons to 1))))))
+    ;; use floyd-warshall to complete the graph.
+    (loop for k in edges
+	  do (loop for i in edges
+		     do (loop for j in edges
+			      for current-w = (get-edge-weight graph i j)
+			      for w1 = (get-edge-weight graph i k)
+			      for w2 = (get-edge-weight graph k j)
+			      if (and (not (eq i j)) w1 w2 (or (null current-w) (< (+ w1 w2) current-w)))
+				do (set-edge-weight graph i j (+ w1 w2)))))
+    graph))
 
-;; do we really need all this?
+(defun remove-valves (graph valves-to-remove)
+  "Returns a graph without valves."
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  (loop for (valve . current-destinations) of-type (symbol . t) in graph
+	if (not (member valve valves-to-remove))
+	  collect (cons valve (loop for (to . distance) of-type (symbol . fixnum) in current-destinations
+				    if (not (member to valves-to-remove))
+				      collect (cons to distance)))))
 
-(defun find-distance-by-dfs (start volume tunnels)
-  "Returns a list of (end . distance) where end are the car of volume elements."
-  (loop for next in (cdr (assoc start tunnels))
-	do (format t "~A can reach ~A~%" start next)))
+(declaim (ftype (function
+		 (list list &key (:current symbol) (:valves-open list) (:time-left fixnum))
+		 fixnum)
+		max-pressure-release))
+(defun max-pressure-release (graph volumes &key current valves-open time-left)
+  (declare (optimize (speed 3) (debug 0) (safety 0)))
+  ;; note: time left is after opening current.
+  (+ (the fixnum (* time-left (the fixnum (cdr (assoc current volumes)))))
+     (the fixnum (loop for (next . distance) of-type (symbol . fixnum) in (cdr (assoc current graph))
+		       if (and (< distance time-left) ; we have time to reach it and open it.
+			       (not (member next valves-open))) ;  it's not already open.
+			 maximize (max-pressure-release graph
+							volumes
+							:current next
+							:valves-open (cons current valves-open)
+							:time-left (- time-left distance 1))))))
 
-(defun build-distances (volume tunnels)
-  "Returns a list of (start end distance)."
-  (loop for (start . flow) in volume
-	nconc (loop for (end . distance) in (find-distance-by-dfs start volume tunnels)
-		    collect (list start end distance))))
+(defun part1 (&optional (input *input*))
+  (destructuring-bind (volumes . tunnels) (parse-input input)
+    (max-pressure-release
+     (remove-valves (build-complete-graph tunnels)
+		    (loop for (valve . volume) in volumes
+			  if (and (not (eq 'AA valve)) (zerop volume))
+			    collect valve))
+     volumes
+     :current 'AA
+     :valves-open nil
+     :time-left 30)))
 
-(defun build-graph (volume tunnels)
-  "Returns 2 values: volume-non-zero and list of (start end distance)."
-  (let ((volume-non-zero (loop for valve-and-flow in volume
-			       if (> (cdr valve-and-flow) 0)
-			       collect valve-and-flow)))
-    (values volume-non-zero (build-distances volume-non-zero tunnels))))
+(assert (= (part1 *input-test*) 1651))
+
+;; part2: we have 26 minutes and are in 2 locations at a time.
+;; we build all partitions of the valves and assign me/the elephant a partition
+;; each. sum the pressures, take the best of all partitions.
+(defun partitions (items)
+  "Returns the list of all (set1 set2) where set1 & set2 are a partition of items."
+  (if (null items)
+      (cons nil nil)
+      (destructuring-bind (first . rest) items
+	(loop for (s1 s2) in (partitions rest)
+	      collect (list (cons first s1) s2)
+	      collect (list s1 (cons first s2))))))
+
+(defun part2 (&optional (input *input*))
+  (destructuring-bind (volumes . tunnels) (parse-input input)
+    (let* ((graph (remove-valves (build-complete-graph tunnels)
+			       (loop for (valve . volume) in volumes
+				     if (and (not (eq 'AA valve)) (zerop volume))
+				       collect valve)))
+	   (valves-to-partition (loop for (valve . _) in graph unless (eq 'AA valve) collect valve)))
+      (loop for (v1 v2) in (partitions valves-to-partition)
+	    for g1 = (remove-valves graph v1)
+	    for g2 = (remove-valves graph v2)
+	    maximize (+
+		      (max-pressure-release g1 volumes :current 'AA :valves-open nil :time-left 26)
+		      (max-pressure-release g2 volumes :current 'AA :valves-open nil :time-left 26))))))
+
+(assert (= (part2 *input-test*) 1707))
