@@ -30,23 +30,17 @@
     (9 . "nine")))
 
 (defparameter *word-list-to-digit-char*
-  (mapcar
-   (lambda (digit-and-word)
-     (cons (coerce (cdr digit-and-word) 'list)
-	   (code-char (+ (char-code #\0) (car digit-and-word)))))
-   *digit-to-word*))
+  (loop for (digit . word) in *digit-to-word*
+	collect (cons (coerce word 'list)
+		      (code-char (+ digit (char-code #\0))))))
 
-;; NOTE: subsequences can overlap and should still be all replaced, i.e.
-;; "twone" -> "21", and not "2ne".
-;; We fix this by keeping the last char of `prefix` around...
 (defun maybe-replace-prefix (list prefix replacement)
-  (if (and (<= (length prefix) (length list))
-	   (equal (subseq list 0 (length prefix)) prefix))
-      (cons replacement
-	    ;; Here is the hack.
-	    (cons (first (last prefix))
-		  (subseq list (length prefix))))
-      nil))
+  ;; If `list` starts with `prefix`, then replace the 1st item of
+  ;; `list` with `replacement` (not replacing all = correct handling
+  ;; of overlapping words).
+  (when (and (<= (length prefix) (length list))
+	     (equal (subseq list 0 (length prefix)) prefix))
+    (cons replacement (rest list))))
 
 (defun maybe-replace-any-prefix (list)
   (or
@@ -65,13 +59,6 @@
 	(replace-digit-words
 	 (rest updated)
 	 (cons (first updated) acc)))))
-
-(defun digits-or-words-only (line)
-    ;; replace words with their digit in our input, then call digits-only on it
-  (let* ((replaced (replace-digit-words (coerce line 'list)))
-	 (digits (digits-only replaced)))
-    (format t "~A -> ~A -> ~A~%" line (coerce replaced 'string) digits)
-    digits))
 
 (defun part2 (input)
   (part1 (mapcar #'replace-digit-words input)))
