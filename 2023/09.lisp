@@ -19,11 +19,11 @@
 
 (defun differentiate-rec (list)
   (cons list
-	(loop for next-list = (differentiate list)
-	      collect next-list into diffs
-	      if (every #'zerop next-list)
-		return diffs
-	      do (setf list next-list))))
+	(loop initially (setf l list)
+	      for l = (differentiate l)
+	      collect l into diffs
+	      if (every #'zerop l)
+		return diffs)))
 
 (defun find-next-value (list)
   (loop for seq in (differentiate-rec list)
@@ -34,13 +34,7 @@
 
 (print (part1 *data*))
 
-(defun find-previous-value (list)
-  (loop initially (setf sign -1)
-	for seq in (differentiate-rec list)
-	for sign = (* -1 sign)
-	sum (* sign (first seq))))
-
 (defun part2 (data)
-  (loop for line in data sum (find-previous-value line)))
+  (part1 (mapcar #'reverse data)))
 
 (print (part2 *data*))
