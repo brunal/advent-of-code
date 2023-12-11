@@ -41,7 +41,6 @@
 	 (actual-tile (loop for (tile . dirs) in *tiles*
 			    if (or (equal dirs directions) (equal dirs (reverse directions)))
 			      return tile)))
-    (format t "S is actually ~A~%" actual-tile)
     (setf (aref array i j) actual-tile)
     array))
   
@@ -106,3 +105,5 @@
     ;; boundary of the loop, the area of the loop and the # of
     ;; integer point inside the loop.
     (1+ (- total-area (/ (length loop-elements) 2)))))
+
+(print (part2 *input*))
