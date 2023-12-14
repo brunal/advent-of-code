@@ -1,4 +1,5 @@
 (require :uiop)
+(require :alexandria)
 
 (defparameter *input* (uiop:read-file-lines "14.input"))
 (defparameter *input-test* (uiop:split-string "O....#....
@@ -34,49 +35,35 @@ O.#..O.#.#
 (defun is-empty (array i j)
   (eq '|.| (aref array i j)))
 
-(defun roll-boulder-north (array i j)
-  (loop for row from i downto 1
-	unless (is-empty array (1- row) j)
-	  return (move-boulder array i j row j)))
+(defun roll-boulder (array i j di dj)
+  (loop for ii = i then (+ di ii)
+	for jj = j then (+ dj jj)
+	unless (is-empty array (+ di ii) (+ dj jj))
+	  return (move-boulder array i j ii jj)))
 
-(defun roll-boulder-south (array i j)
-  (loop for row from i upto (1- (array-dimension array 0))
-	unless (is-empty array (1+ row) j)
-	  return (move-boulder array i j row j)))
-
-(defun roll-boulder-west (array i j)
-  (loop for col from j downto 1
-	unless (is-empty array i (1- col))
-	  return (move-boulder array i j i col)))
-
-(defun roll-boulder-east (array i j)
-  (loop for col from j upto (1- (array-dimension array 1))
-	unless (is-empty array i (1+ col))
-	  return (move-boulder array i j i col)))
+(defmacro roll-boulders (array-name direction)
+  (let ((positive (> (apply #'+ direction) 0))
+	(first-axis (if (zerop (first direction)) 1 0)))
+    `(loop for ,(if (zerop first-axis) 'i 'j)
+	   ,@(if positive
+		 `(from (1- (array-dimension ,array-name ,first-axis)) downto 1)
+		 `(from 1 below (array-dimension ,array-name ,first-axis)))
+	   do (loop for ,(if (zerop first-axis) 'j 'i)
+		    from 1 below (array-dimension ,array-name ,(- 1 first-axis))
+		    if (eq (aref ,array-name i j) 'O)
+		      do (roll-boulder ,array-name i j ,@direction)))))
 
 (defun roll-boulders-north (array)
-  (loop for i from 0 below (array-dimension array 0)
-	do (loop for j from 0 below (array-dimension array 1)
-		 if (eq (aref array i j) 'o)
-		   do (roll-boulder-north array i j))))
+  (roll-boulders array (-1 0)))
 
 (defun roll-boulders-south (array)
-  (loop for i from (1- (array-dimension array 0)) above 0
-	do (loop for j from 0 below (array-dimension array 1)
-		 if (eq (aref array i j) 'o)
-		   do (roll-boulder-south array i j))))
+  (roll-boulders array (1 0)))
 
 (defun roll-boulders-west (array)
-  (loop for j from 0 below (array-dimension array 1)
-	do (loop for i from 0 below (array-dimension array 1)
-		 if (eq (aref array i j) 'O)
-		   do (roll-boulder-west array i j))))
+  (roll-boulders array (0 -1)))
 
 (defun roll-boulders-east (array)
-  (loop for j from (1- (array-dimension array 1)) above 0
-	do (loop for i from 0 below (array-dimension array 1)
-		 if (eq (aref array i j) 'O)
-		   do (roll-boulder-east array i j))))
+  (roll-boulders array (0 1)))
 
 (defun compute-load (array)
   (loop for i from 0 below (array-dimension array 0)
@@ -89,7 +76,7 @@ O.#..O.#.#
   (let ((array (parse-input input)))
     (roll-boulders-north array)
     (compute-load array)))
-	
+
 (assert (= 136 (part1 *input-test*)))
 
 (print (part1 *input*))
@@ -100,14 +87,24 @@ O.#..O.#.#
   (roll-boulders-south array)
   (roll-boulders-east array))
 
-(defun format-array (array)
-  (loop for i from 0 below (array-dimension array 0)
-	do (format t "~A~%" (loop for j from 0 below (array-dimension array 1)
-				  collect (aref array i j)))))
-
 (defun part2 (input n)
-  (let ((array (parse-input input)))
-    (loop repeat n do (cycle array))
-    (compute-load array)))
+  (let ((array (parse-input input))
+	(hash-table (make-hash-table :test #'equalp)))
+    (loop for step from 0 below n
+	  do (progn
+	       (setf (gethash (alexandria:copy-array array) hash-table) step)
+	       (cycle array)
+	       (let ((already-seen (gethash array hash-table)))
+		 (when already-seen
+		   (let* ((new-step (1+ step))
+			  (cycle-length (- new-step already-seen))
+			  (remaining-steps (- n new-step))
+			  (necessary-steps (mod remaining-steps cycle-length)))
+		     (loop repeat necessary-steps do (cycle array))
+		     (return (compute-load array)))))))))
 
 (defparameter *n* 1000000000)
+
+(assert (= 64 (part2 *input-test* *n*)))
+
+(print (part2 *input* *n*))
