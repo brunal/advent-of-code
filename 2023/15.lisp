@@ -17,27 +17,22 @@
 (assert (= 1320 (part1 *input-test*)))
 (print (part1 *input*))
 
-
 (defun remove-lens (boxes label)
-  (let* ((box-number (hash-string label))
-	 (box (aref boxes box-number)))
+  (let ((box-number (hash-string label)))
     (setf
      (aref boxes box-number)
-     (delete-if (lambda (l) (string= (first l) label)) box))))
+     (delete-if (lambda (l) (string= (first l) label))
+		(aref boxes box-number)))))
 
 (defun add-lens (boxes label focal-length)
-  (let* ((box-number (hash-string label))
-	 (box (aref boxes box-number)))
-    (loop for lens in box
+  (let ((box-number (hash-string label)))
+    (loop for lens in (aref boxes box-number)
 	  if (string= (first lens) label)
-	    do (progn
-		 (rplacd lens focal-length)
-		 (return))
+	    do (rplacd lens focal-length)
+	    and return nil
 	  finally
-	     (progn
-	       (let ((lens (cons label focal-length)))
-		 (setf (aref boxes box-number)
-		       (push lens box)))))))
+	     (push (cons label focal-length)
+		   (aref boxes box-number)))))
 
 (defun run-instruction (boxes instruction)
   (if (char= #\- (char instruction (1- (length instruction))))
